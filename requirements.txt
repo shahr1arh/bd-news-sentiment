@@ -1,0 +1,14 @@
+# Web framework
+flask>=3.0.3,<4.0
+
+# HTTP + scraping
+requests>=2.32.3,<3.0      # CVE-2024-35195 fixed in 2.32.0 (proxy credential leak)
+beautifulsoup4>=4.12.3,<5.0
+lxml>=5.2.2,<6.0
+
+# NLP
+nltk>=3.9.1,<4.0           # ReDoS fixes post-3.8.1
+
+# Production servers
+gunicorn>=22.0.0,<27.0     # CVE-2024-1135 fixed in 22.0.0 (HTTP request smuggling)
+waitress>=3.0.0,<4.0       # Windows / cross-platform alternative to gunicorn

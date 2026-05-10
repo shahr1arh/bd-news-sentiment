@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>BD News Sentiment Dashboard</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0b0d14;
+      --surface:   #13161f;
+      --card:      #191c27;
+      --border:    #252836;
+      --border-hi: #353848;
+      --accent:    #4f8ef7;
+      --accent-lo: rgba(79,142,247,0.12);
+      --green:     #22c55e;
+      --green-lo:  rgba(34,197,94,0.12);
+      --red:       #ef4444;
+      --red-lo:    rgba(239,68,68,0.12);
+      --yellow:    #f59e0b;
+      --yellow-lo: rgba(245,158,11,0.12);
+      --purple:    #a78bfa;
+      --text:      #e2e8f0;
+      --text-2:    #a0aec0;
+      --text-3:    #64748b;
+      --radius:    10px;
+    }
+
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .logo { display: flex; align-items: center; gap: 12px; }
+    .logo .flag { font-size: 1.5rem; }
+    .logo-text h1 { font-size: 1.05rem; font-weight: 700; }
+    .logo-text p  { color: var(--text-3); font-size: 0.72rem; margin-top: 1px; }
+
+    .header-right { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+
+    #countdown-wrap { display: flex; align-items: center; gap: 6px; color: var(--text-3); font-size: 0.75rem; }
+    #countdown-bar-wrap { width: 60px; height: 4px; background: var(--border); border-radius: 99px; overflow: hidden; }
+    #countdown-bar { height: 100%; background: var(--accent); border-radius: 99px; transition: width 1s linear, background 0.3s; width: 100%; }
+    #last-updated { color: var(--text-3); font-size: 0.73rem; }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 16px; border-radius: var(--radius);
+      border: none; cursor: pointer; font-size: 0.82rem; font-weight: 600;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .btn:hover  { opacity: 0.88; }
+    .btn:active { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+    .btn-primary   { background: var(--accent); color: #fff; }
+    .btn-secondary { background: var(--card); color: var(--text-2); border: 1px solid var(--border); }
+
+    /* ── Layout ── */
+    main { padding: 24px 28px; max-width: 1440px; margin: 0 auto; }
+
+    /* ── Stat cards ── */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+    .stat-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      display: flex; flex-direction: column; gap: 4px;
+      position: relative; overflow: hidden;
+    }
+    .stat-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    }
+    .stat-card.c-total::before   { background: var(--accent); }
+    .stat-card.c-pos::before     { background: var(--green); }
+    .stat-card.c-neg::before     { background: var(--red); }
+    .stat-card.c-neu::before     { background: var(--yellow); }
+    .stat-card.c-mood::before    { background: var(--purple); }
+    .stat-label { color: var(--text-3); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+    .stat-value { font-size: 2rem; font-weight: 800; line-height: 1; margin: 4px 0; }
+    .stat-sub   { font-size: 0.72rem; color: var(--text-3); }
+    .vc-total { color: var(--accent); }
+    .vc-pos   { color: var(--green); }
+    .vc-neg   { color: var(--red); }
+    .vc-neu   { color: var(--yellow); }
+    .vc-mood  { color: var(--purple); }
+
+    /* ── Charts ── */
+    .charts-top {
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 800px) { .charts-top { grid-template-columns: 1fr; } }
+
+    .chart-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+    }
+    .chart-card h2 {
+      font-size: 0.72rem; color: var(--text-3);
+      text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700;
+      margin-bottom: 16px;
+    }
+    .chart-wrapper-donut { position: relative; height: 230px; }
+    .chart-wrapper-bar   { position: relative; height: 230px; }
+    .chart-wrapper-line  { position: relative; height: 180px; }
+
+    .chart-trend {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 22px;
+    }
+
+    /* ── Topic pills ── */
+    .topics-row {
+      display: flex; gap: 8px; flex-wrap: wrap;
+      margin-bottom: 16px; align-items: center;
+    }
+    .topics-label { color: var(--text-3); font-size: 0.75rem; font-weight: 600; margin-right: 2px; }
+    .topic-pill {
+      padding: 5px 13px; border-radius: 99px; font-size: 0.75rem; font-weight: 600;
+      border: 1px solid var(--border); background: transparent; color: var(--text-2);
+      cursor: pointer; transition: all 0.15s; white-space: nowrap;
+    }
+    .topic-pill:hover { border-color: var(--border-hi); color: var(--text); }
+    .topic-pill.active { background: var(--accent-lo); border-color: var(--accent); color: var(--accent); }
+
+    /* ── Controls bar ── */
+    .controls-bar {
+      display: flex; gap: 10px; margin-bottom: 14px;
+      flex-wrap: wrap; align-items: center;
+    }
+    .search-wrap { position: relative; flex: 1; min-width: 180px; max-width: 340px; }
+    .search-wrap svg {
+      position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+      color: var(--text-3); pointer-events: none;
+    }
+    #search-input {
+      width: 100%; padding: 8px 12px 8px 34px;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text); font-size: 0.83rem;
+      outline: none; transition: border-color 0.15s;
+    }
+    #search-input:focus { border-color: var(--accent); }
+    #search-input::placeholder { color: var(--text-3); }
+
+    .filter-group { display: flex; gap: 6px; flex-wrap: wrap; }
+    .chip {
+      padding: 6px 13px; border-radius: 99px; font-size: 0.76rem; font-weight: 600;
+      border: 1px solid var(--border); background: transparent; color: var(--text-2);
+      cursor: pointer; transition: all 0.15s; white-space: nowrap;
+    }
+    .chip:hover { border-color: var(--border-hi); color: var(--text); }
+    .chip.active     { background: var(--accent-lo);  border-color: var(--accent);  color: var(--accent); }
+    .chip.pos-active { background: var(--green-lo);   border-color: var(--green);   color: var(--green); }
+    .chip.neg-active { background: var(--red-lo);     border-color: var(--red);     color: var(--red); }
+    .chip.neu-active { background: var(--yellow-lo);  border-color: var(--yellow);  color: var(--yellow); }
+
+    .controls-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+    select.sort-select {
+      padding: 7px 10px; background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text-2); font-size: 0.78rem;
+      cursor: pointer; outline: none;
+    }
+    select.sort-select:focus { border-color: var(--accent); }
+
+    /* ── Result meta ── */
+    .result-meta {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 10px; flex-wrap: wrap; gap: 8px;
+    }
+    .result-meta span { color: var(--text-3); font-size: 0.75rem; }
+
+    /* ── Headlines ── */
+    .headlines-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden;
+    }
+    .hl-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 20px; border-bottom: 1px solid var(--border);
+    }
+    .hl-header h2 { font-size: 0.72rem; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; }
+
+    .headline-item {
+      display: grid; grid-template-columns: 1fr auto; gap: 14px;
+      padding: 14px 20px; border-bottom: 1px solid var(--border);
+      align-items: start; transition: background 0.1s;
+    }
+    .headline-item:hover { background: rgba(255,255,255,0.025); }
+    .headline-item:last-child { border-bottom: none; }
+
+    .hl-title-link {
+      color: var(--text); text-decoration: none;
+      font-size: 0.9rem; font-weight: 500; line-height: 1.45;
+      display: block; margin-bottom: 6px;
+    }
+    .hl-title-link:hover { color: var(--accent); }
+
+    mark { background: rgba(79,142,247,0.25); color: var(--text); border-radius: 2px; }
+
+    .hl-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .hl-source { font-size: 0.7rem; color: var(--text-3); font-weight: 600; }
+    .hl-dot    { color: var(--border-hi); }
+    .hl-time   { font-size: 0.7rem; color: var(--text-3); }
+    .topic-tag {
+      font-size: 0.65rem; font-weight: 700; padding: 2px 7px;
+      border-radius: 4px; background: var(--surface); color: var(--text-3);
+      border: 1px solid var(--border); text-transform: uppercase; letter-spacing: 0.04em;
+    }
+
+    .badge {
+      display: inline-block; padding: 3px 10px;
+      border-radius: 99px; font-size: 0.7rem; font-weight: 700; white-space: nowrap;
+    }
+    .badge.Positive { background: var(--green-lo);  color: var(--green); }
+    .badge.Negative { background: var(--red-lo);    color: var(--red); }
+    .badge.Neutral  { background: var(--yellow-lo); color: var(--yellow); }
+
+    .score-val { font-size: 0.7rem; color: var(--text-3); text-align: right; font-variant-numeric: tabular-nums; }
+    .right-col { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; min-width: 82px; padding-top: 2px; }
+
+    /* ── States ── */
+    .state-box { text-align: center; padding: 56px 24px; color: var(--text-3); }
+    .state-box .state-icon { font-size: 2.2rem; margin-bottom: 12px; }
+    .state-box p { font-size: 0.85rem; margin-top: 4px; }
+
+    .spinner {
+      display: inline-block; width: 22px; height: 22px;
+      border: 3px solid var(--border); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin 0.75s linear infinite;
+      vertical-align: middle; margin-right: 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed; bottom: 24px; right: 24px;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 12px 18px;
+      font-size: 0.82rem; color: var(--text-2);
+      box-shadow: 0 2px 16px rgba(0,0,0,0.4);
+      transform: translateY(80px); opacity: 0; transition: all 0.25s; z-index: 200;
+    }
+    #toast.show { transform: translateY(0); opacity: 1; }
+
+    /* ── Trend no-data ── */
+    .trend-empty {
+      display: flex; align-items: center; justify-content: center;
+      height: 180px; color: var(--text-3); font-size: 0.82rem; flex-direction: column; gap: 8px;
+    }
+
+    @media (max-width: 600px) {
+      main { padding: 16px; }
+      header { padding: 12px 16px; }
+      .controls-right { margin-left: 0; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <span class="flag">🇧🇩</span>
+    <div class="logo-text">
+      <h1>BD News Sentiment</h1>
+      <p>Real-time NLP analysis · 5 sources</p>
+    </div>
+  </div>
+  <div class="header-right">
+    <div id="countdown-wrap">
+      <div id="countdown-bar-wrap"><div id="countdown-bar"></div></div>
+      <span id="countdown-label">—</span>
+    </div>
+    <span id="last-updated">—</span>
+    <button class="btn btn-secondary" onclick="exportCSV()">⬇ CSV</button>
+    <button class="btn btn-primary" id="refresh-btn" onclick="loadData(true)">⟳ Refresh</button>
+  </div>
+</header>
+
+<main>
+
+  <!-- Stat cards -->
+  <div class="stats-row">
+    <div class="stat-card c-total">
+      <div class="stat-label">Total</div>
+      <div class="stat-value vc-total" id="s-total">—</div>
+      <div class="stat-sub" id="s-sources">—</div>
+    </div>
+    <div class="stat-card c-pos">
+      <div class="stat-label">Positive</div>
+      <div class="stat-value vc-pos" id="s-pos">—</div>
+      <div class="stat-sub" id="s-pos-pct">—</div>
+    </div>
+    <div class="stat-card c-neg">
+      <div class="stat-label">Negative</div>
+      <div class="stat-value vc-neg" id="s-neg">—</div>
+      <div class="stat-sub" id="s-neg-pct">—</div>
+    </div>
+    <div class="stat-card c-neu">
+      <div class="stat-label">Neutral</div>
+      <div class="stat-value vc-neu" id="s-neu">—</div>
+      <div class="stat-sub" id="s-neu-pct">—</div>
+    </div>
+    <div class="stat-card c-mood">
+      <div class="stat-label">Overall Mood</div>
+      <div class="stat-value vc-mood" id="s-mood" style="font-size:1.15rem; padding-top:6px;">—</div>
+      <div class="stat-sub" id="s-score">avg: —</div>
+    </div>
+  </div>
+
+  <!-- Top charts: donut + bar -->
+  <div class="charts-top">
+    <div class="chart-card">
+      <h2>Sentiment Distribution</h2>
+      <div class="chart-wrapper-donut"><canvas id="pieChart"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h2>Average Sentiment by Source</h2>
+      <div class="chart-wrapper-bar"><canvas id="barChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Trend chart -->
+  <div class="chart-trend">
+    <h2>📈 Sentiment Trend — Last 48 Refresh Cycles</h2>
+    <div id="trend-area">
+      <div class="trend-empty"><span class="spinner"></span><span>Loading trend data…</span></div>
+    </div>
+  </div>
+
+  <!-- Topic filter -->
+  <div class="topics-row" id="topic-pills">
+    <span class="topics-label">Topic:</span>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls-bar">
+    <div class="search-wrap">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input id="search-input" type="text" placeholder="Search headlines… (Ctrl+K)" oninput="onSearch()"/>
+    </div>
+    <div class="filter-group">
+      <button class="chip active" onclick="setSentiment('All',this)">All</button>
+      <button class="chip" onclick="setSentiment('Positive',this)">😊 Positive</button>
+      <button class="chip" onclick="setSentiment('Negative',this)">😠 Negative</button>
+      <button class="chip" onclick="setSentiment('Neutral',this)">😐 Neutral</button>
+    </div>
+    <div class="controls-right">
+      <select class="sort-select" id="sort-select" onchange="renderHeadlines()">
+        <option value="default">Sort: Latest</option>
+        <option value="pos">Sort: Most Positive</option>
+        <option value="neg">Sort: Most Negative</option>
+        <option value="az">Sort: A → Z</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="result-meta">
+    <span id="result-count">—</span>
+  </div>
+
+  <div class="headlines-card">
+    <div class="hl-header"><h2>📰 Headlines</h2></div>
+    <div id="headlines-list">
+      <div class="state-box"><div><span class="spinner"></span></div><p>Loading headlines…</p></div>
+    </div>
+  </div>
+
+</main>
+
+<div id="toast"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────────
+let allHeadlines   = [];
+let sentimentFilter = "All";
+let topicFilter     = "All";
+let searchQuery     = "";
+
+// ── Countdown ──────────────────────────────────────────────────────────────────
+const CACHE_TTL = 300;
+let _cdTimer = null, _cdLeft = 0;
+
+function startCountdown(ttl) {
+  clearInterval(_cdTimer);
+  _cdLeft = Math.max(0, ttl);
+  _tick();
+  _cdTimer = setInterval(_tick, 1000);
+}
+
+function _tick() {
+  if (_cdLeft <= 0) {
+    clearInterval(_cdTimer);
+    document.getElementById("countdown-label").textContent = "Refreshing…";
+    document.getElementById("countdown-bar").style.width = "0%";
+    return;
+  }
+  const m = Math.floor(_cdLeft / 60), s = String(_cdLeft % 60).padStart(2, "0");
+  document.getElementById("countdown-label").textContent = `Next in ${m}:${s}`;
+  const pct = (_cdLeft / CACHE_TTL) * 100;
+  const bar = document.getElementById("countdown-bar");
+  bar.style.width = pct + "%";
+  bar.style.background = pct < 20 ? "var(--yellow)" : "var(--accent)";
+  _cdLeft--;
+}
+
+// ── Charts ─────────────────────────────────────────────────────────────────────
+let pieChart, barChart, lineChart;
+
+function renderCharts(counts, sourceAvg) {
+  if (pieChart) pieChart.destroy();
+  if (barChart) barChart.destroy();
+
+  pieChart = new Chart(document.getElementById("pieChart").getContext("2d"), {
+    type: "doughnut",
+    data: {
+      labels: ["Positive", "Negative", "Neutral"],
+      datasets: [{
+        data: [counts.Positive || 0, counts.Negative || 0, counts.Neutral || 0],
+        backgroundColor: ["rgba(34,197,94,0.8)","rgba(239,68,68,0.8)","rgba(245,158,11,0.8)"],
+        borderColor:     ["#22c55e","#ef4444","#f59e0b"],
+        borderWidth: 1.5, hoverOffset: 8,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: "68%",
+      plugins: {
+        legend: { position: "bottom", labels: { color: "#64748b", boxWidth: 10, padding: 14, font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const total = (counts.Positive||0)+(counts.Negative||0)+(counts.Neutral||0);
+              return ` ${ctx.label}: ${ctx.parsed} (${Math.round(ctx.parsed/Math.max(1,total)*100)}%)`;
+            }
+          }
+        }
+      },
+    }
+  });
+
+  const sources = Object.keys(sourceAvg);
+  const scores  = sources.map(s => sourceAvg[s]);
+  barChart = new Chart(document.getElementById("barChart").getContext("2d"), {
+    type: "bar",
+    data: {
+      labels: sources,
+      datasets: [{
+        label: "Avg Compound Score",
+        data: scores,
+        backgroundColor: scores.map(s => s >= 0.05 ? "rgba(34,197,94,0.7)" : s <= -0.05 ? "rgba(239,68,68,0.7)" : "rgba(245,158,11,0.7)"),
+        borderColor:     scores.map(s => s >= 0.05 ? "#22c55e" : s <= -0.05 ? "#ef4444" : "#f59e0b"),
+        borderWidth: 1.5, borderRadius: 6,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` Score: ${ctx.parsed.y > 0 ? "+" : ""}${ctx.parsed.y}` } } },
+      scales: {
+        x: { ticks: { color: "#64748b", font: { size: 11 } }, grid: { color: "rgba(37,40,54,0.8)" } },
+        y: { min: -1, max: 1, ticks: { color: "#64748b", font: { size: 10 } }, grid: { color: "rgba(37,40,54,0.8)" } }
+      }
+    }
+  });
+}
+
+async function loadAndRenderTrend() {
+  const area = document.getElementById("trend-area");
+  try {
+    const resp = await fetch("/api/trends");
+    const json = await resp.json();
+    const history = json.history || [];
+
+    if (history.length < 2) {
+      area.innerHTML = `<div class="trend-empty">
+        <span style="font-size:1.5rem">📊</span>
+        <span>Trend data builds up after a few refresh cycles. Check back in a few minutes.</span>
+      </div>`;
+      return;
+    }
+
+    area.innerHTML = `<div class="chart-wrapper-line"><canvas id="lineChart"></canvas></div>`;
+
+    const labels  = history.map(b => {
+      const d = new Date(b.scraped_at * 1000);
+      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    });
+    const avgData = history.map(b => b.avg_compound);
+    const posData = history.map(b => +(b.pos_count / Math.max(1, b.total) * 100).toFixed(1));
+    const negData = history.map(b => +(b.neg_count / Math.max(1, b.total) * 100).toFixed(1));
+
+    if (lineChart) lineChart.destroy();
+    lineChart = new Chart(document.getElementById("lineChart").getContext("2d"), {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: "Avg Compound Score",
+            data: avgData,
+            borderColor: "#4f8ef7",
+            backgroundColor: "rgba(79,142,247,0.08)",
+            fill: true,
+            tension: 0.4,
+            pointRadius: 3,
+            pointBackgroundColor: "#4f8ef7",
+            yAxisID: "yScore",
+          },
+          {
+            label: "% Positive",
+            data: posData,
+            borderColor: "#22c55e",
+            backgroundColor: "transparent",
+            borderDash: [4, 3],
+            tension: 0.3,
+            pointRadius: 2,
+            pointBackgroundColor: "#22c55e",
+            yAxisID: "yPct",
+          },
+          {
+            label: "% Negative",
+            data: negData,
+            borderColor: "#ef4444",
+            backgroundColor: "transparent",
+            borderDash: [4, 3],
+            tension: 0.3,
+            pointRadius: 2,
+            pointBackgroundColor: "#ef4444",
+            yAxisID: "yPct",
+          },
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          legend: { labels: { color: "#64748b", boxWidth: 10, font: { size: 11 } } },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                if (ctx.dataset.yAxisID === "yScore")
+                  return ` Avg score: ${ctx.parsed.y > 0 ? "+" : ""}${ctx.parsed.y}`;
+                return ` ${ctx.dataset.label}: ${ctx.parsed.y}%`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: { ticks: { color: "#64748b", font: { size: 10 }, maxTicksLimit: 12 }, grid: { color: "rgba(37,40,54,0.8)" } },
+          yScore: {
+            type: "linear", position: "left",
+            min: -1, max: 1,
+            ticks: { color: "#4f8ef7", font: { size: 10 } },
+            grid: { color: "rgba(37,40,54,0.8)" },
+            title: { display: true, text: "Compound Score", color: "#64748b", font: { size: 10 } }
+          },
+          yPct: {
+            type: "linear", position: "right",
+            min: 0, max: 100,
+            ticks: { color: "#64748b", font: { size: 10 }, callback: v => v + "%" },
+            grid: { drawOnChartArea: false },
+            title: { display: true, text: "% Share", color: "#64748b", font: { size: 10 } }
+          },
+        }
+      }
+    });
+  } catch (e) {
+    area.innerHTML = `<div class="trend-empty"><span>Could not load trend data.</span></div>`;
+  }
+}
+
+// ── Topic pills ────────────────────────────────────────────────────────────────
+function buildTopicPills(topicCounts) {
+  const wrap  = document.getElementById("topic-pills");
+  const label = wrap.querySelector(".topics-label");
+  wrap.innerHTML = "";
+  wrap.appendChild(label);
+
+  const all = document.createElement("button");
+  all.className = "topic-pill" + (topicFilter === "All" ? " active" : "");
+  all.textContent = "All topics";
+  all.onclick = () => setTopic("All", all);
+  wrap.appendChild(all);
+
+  for (const [topic, cnt] of Object.entries(topicCounts)) {
+    const pill = document.createElement("button");
+    pill.className = "topic-pill" + (topicFilter === topic ? " active" : "");
+    pill.textContent = `${topic} (${cnt})`;
+    pill.onclick = () => setTopic(topic, pill);
+    wrap.appendChild(pill);
+  }
+}
+
+function setTopic(topic, el) {
+  topicFilter = topic;
+  document.querySelectorAll(".topic-pill").forEach(p => p.classList.remove("active"));
+  el.classList.add("active");
+  renderHeadlines();
+}
+
+// ── Sentiment chips ────────────────────────────────────────────────────────────
+function setSentiment(filter, el) {
+  sentimentFilter = filter;
+  document.querySelectorAll(".chip").forEach(c =>
+    c.classList.remove("active","pos-active","neg-active","neu-active"));
+  const cls = {Positive:"pos-active",Negative:"neg-active",Neutral:"neu-active"}[filter] || "active";
+  el.classList.add(cls);
+  renderHeadlines();
+}
+
+function onSearch() {
+  searchQuery = document.getElementById("search-input").value.trim().toLowerCase();
+  renderHeadlines();
+}
+
+// ── Render helpers ─────────────────────────────────────────────────────────────
+function esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function highlight(text, q) {
+  if (!q) return esc(text);
+  return esc(text).replace(new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")})`, "gi"), "<mark>$1</mark>");
+}
+function sortHeadlines(arr) {
+  const m = document.getElementById("sort-select").value;
+  const c = [...arr];
+  if (m === "pos") c.sort((a,b) => b.compound - a.compound);
+  else if (m === "neg") c.sort((a,b) => a.compound - b.compound);
+  else if (m === "az")  c.sort((a,b) => a.title.localeCompare(b.title));
+  return c;
+}
+
+function renderHeadlines() {
+  let filtered = allHeadlines;
+  if (sentimentFilter !== "All") filtered = filtered.filter(h => h.sentiment === sentimentFilter);
+  if (topicFilter     !== "All") filtered = filtered.filter(h => h.topic     === topicFilter);
+  if (searchQuery)               filtered = filtered.filter(h => h.title.toLowerCase().includes(searchQuery));
+  filtered = sortHeadlines(filtered);
+
+  document.getElementById("result-count").textContent =
+    `Showing ${filtered.length} of ${allHeadlines.length} headlines`;
+
+  const list = document.getElementById("headlines-list");
+  if (!filtered.length) {
+    list.innerHTML = `<div class="state-box"><div class="state-icon">🔍</div>
+      <strong>No headlines match your filters</strong><p>Try adjusting the search or filters.</p></div>`;
+    return;
+  }
+
+  list.innerHTML = filtered.map(h => {
+    const sign = h.compound > 0 ? "+" : "";
+    return `
+      <div class="headline-item">
+        <div>
+          <a class="hl-title-link" href="${esc(h.link)}" target="_blank" rel="noopener noreferrer">
+            ${highlight(h.title, searchQuery)}
+          </a>
+          <div class="hl-meta">
+            <span class="hl-source">${esc(h.source)}</span>
+            <span class="hl-dot">·</span>
+            <span class="hl-time">${esc(h.scraped_at)}</span>
+            ${h.topic ? `<span class="topic-tag">${esc(h.topic)}</span>` : ""}
+          </div>
+        </div>
+        <div class="right-col">
+          <span class="badge ${h.sentiment}">${h.sentiment}</span>
+          <span class="score-val">${sign}${h.compound}</span>
+        </div>
+      </div>`;
+  }).join("");
+}
+
+function renderStats(stats, sourceCount) {
+  const c = stats.counts || {}, n = Math.max(1, stats.total || 1);
+  document.getElementById("s-total").textContent  = stats.total || 0;
+  document.getElementById("s-sources").textContent = `from ${sourceCount} source${sourceCount!==1?"s":""}`;
+  document.getElementById("s-pos").textContent    = c.Positive || 0;
+  document.getElementById("s-pos-pct").textContent = `${Math.round((c.Positive||0)/n*100)}% of total`;
+  document.getElementById("s-neg").textContent    = c.Negative || 0;
+  document.getElementById("s-neg-pct").textContent = `${Math.round((c.Negative||0)/n*100)}% of total`;
+  document.getElementById("s-neu").textContent    = c.Neutral || 0;
+  document.getElementById("s-neu-pct").textContent = `${Math.round((c.Neutral||0)/n*100)}% of total`;
+  const mood = stats.overall_sentiment || "—";
+  document.getElementById("s-mood").textContent =
+    mood==="Positive"?"😊 Positive":mood==="Negative"?"😠 Negative":mood==="Neutral"?"😐 Neutral":"—";
+  document.getElementById("s-score").textContent = `avg compound: ${stats.avg_compound ?? "—"}`;
+}
+
+function renderAll(json) {
+  allHeadlines = json.headlines || [];
+  const stats  = json.stats    || {};
+  const sc     = json.source_count || new Set(allHeadlines.map(h=>h.source)).size;
+  renderStats(stats, sc);
+  renderCharts(stats.counts || {}, stats.source_avg || {});
+  buildTopicPills(stats.topic_counts || {});
+  renderHeadlines();
+  if (json.last_updated) {
+    const d = new Date(json.last_updated * 1000);
+    document.getElementById("last-updated").textContent = "Updated " + d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+    startCountdown(Math.max(0, CACHE_TTL - Math.round(Date.now()/1000 - json.last_updated)));
+  }
+}
+
+// ── Load data ──────────────────────────────────────────────────────────────────
+async function loadData(forceRefresh = false) {
+  const btn = document.getElementById("refresh-btn");
+  btn.disabled = true; btn.textContent = "Loading…";
+  document.getElementById("headlines-list").innerHTML =
+    `<div class="state-box"><div><span class="spinner"></span></div><p>${forceRefresh?"Fetching latest headlines…":"Loading…"}</p></div>`;
+  try {
+    const url = forceRefresh ? "/api/refresh" : "/api/headlines";
+    const res = await fetch(url, { method: forceRefresh ? "POST" : "GET" });
+    const json = await res.json();
+    if (json.status === "error") throw new Error(json.message);
+    renderAll(json);
+    if (forceRefresh) {
+      showToast("✓ Headlines refreshed");
+      loadAndRenderTrend();   // refresh trend after manual reload
+    }
+  } catch (err) {
+    document.getElementById("headlines-list").innerHTML =
+      `<div class="state-box"><div class="state-icon">⚠️</div><strong>Failed to load</strong><p>${err.message||"Check your connection."}</p></div>`;
+    showToast("⚠ " + (err.message || "Unknown error"));
+  }
+  btn.disabled = false; btn.textContent = "⟳ Refresh";
+}
+
+// ── CSV export ─────────────────────────────────────────────────────────────────
+function exportCSV() {
+  if (!allHeadlines.length) { showToast("No data to export."); return; }
+  const cols = ["title","source","sentiment","compound","pos","neg","neu","topic","scraped_at","link"];
+  const rows = [cols.join(","), ...allHeadlines.map(h =>
+    cols.map(c => `"${String(h[c]??'').replace(/"/g,'""')}"`).join(",")
+  )];
+  const a = Object.assign(document.createElement("a"), {
+    href: URL.createObjectURL(new Blob([rows.join("\n")], {type:"text/csv"})),
+    download: `bd-news-sentiment-${new Date().toISOString().slice(0,10)}.csv`,
+  });
+  a.click();
+  showToast("✓ CSV downloaded");
+}
+
+// ── Toast ──────────────────────────────────────────────────────────────────────
+let _toastT;
+function showToast(msg, ms=3000) {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(_toastT);
+  _toastT = setTimeout(() => t.classList.remove("show"), ms);
+}
+
+// ── Keyboard shortcut ──────────────────────────────────────────────────────────
+document.addEventListener("keydown", e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+    e.preventDefault();
+    document.getElementById("search-input").focus();
+  }
+});
+
+// ── Boot ───────────────────────────────────────────────────────────────────────
+loadData();
+loadAndRenderTrend();
+</script>
+</body>
+</html>
